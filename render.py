@@ -147,10 +147,26 @@ class Render:
                     self.grid,
                     color,
                     (
-                        j * self.cell_size,
-                        i * self.cell_size,
-                        self.cell_size,
-                        self.cell_size,
+                        (
+                            j * self.cell_size
+                            if not cell.startswith("P")
+                            else j * self.cell_size + (self.cell_size // 4)
+                        ),
+                        (
+                            i * self.cell_size
+                            if not cell.startswith("P")
+                            else i * self.cell_size + (self.cell_size // 4)
+                        ),
+                        (
+                            self.cell_size
+                            if not cell.startswith("P")
+                            else self.cell_size // 2
+                        ),
+                        (
+                            self.cell_size
+                            if not cell.startswith("P")
+                            else self.cell_size // 2
+                        ),
                     ),
                 )
 
@@ -264,16 +280,6 @@ class Render:
             row, col = step
             if self.game_parameter.map[row][col] not in ["S", "G"]:
                 self.game_parameter.map[row][col] = "P"
-                pygame.draw.rect(
-                    self.grid,
-                    PATH_COLOR,
-                    (
-                        col * self.cell_size,
-                        row * self.cell_size,
-                        self.cell_size,
-                        self.cell_size,
-                    ),
-                )
             self.path_index += 1
             return True
         return False
