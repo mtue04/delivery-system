@@ -13,6 +13,10 @@ class GameParameter:
         self.time_limit = 0
         self.fuel_limit = 0
 
+        self.agents = []  # List to store all agents
+        self.main_agent = None  # The main agent (S to G)
+        self.agent_color = {}  # Dictionary to store agent color
+
         # Define levels with their respective configurations
         self.levels = {
             1: (False, False, False),  # No time limit, no fuel limit, single agent
@@ -65,9 +69,12 @@ class GameParameter:
 
             # Initialize the map
             self.map = []
+            self.agents = []
+
+            agent_goals = {}  # use for level 4
 
             # Read the map
-            for line in lines[1:]:
+            for i, line in enumerate(lines[1:]):
                 row = line.strip().split()
 
                 if self.level == 1:
@@ -94,8 +101,49 @@ class GameParameter:
                         )
                         for cell in row
                     ]
+                elif self.level == 4:
+                    for j, cell in enumerate(row):
+                        if cell.startswith("S") and cell != "S":
+                            self.agents.append(Agent(f"S{cell[1:]}", (i, j), None))
+                        elif cell == "S":
+                            self.main_agent = Agent("S", (i, j), None)
+                            self.agents.append(self.main_agent)
+                        elif cell.startswith("G"):
+                            agent_goals[cell if cell != "G" else "G"] = (i, j)
 
                 self.map.append(row)
+
+            # Update agent goals for level 4
+            if self.level == 4:
+                for agent in self.agents:
+                    if agent.id in agent_goals:
+                        agent.update_goal(agent_goals[agent.id])
+                    elif agent.id.startswith("S") and "G" + agent.id[1:] in agent_goals:
+                        agent.update_goal(agent_goals["G" + agent.id[1:]])
+
+            # Set colors for agents (surely unique)
+            for agent in self.agents:
+                color = generate_color()
+                while color in self.agent_color.values():
+                    color = generate_color()
+                self.agent_color[agent.id] = color
+
+        # Ensure main_agent is set for all levels
+        if self.main_agent is None:
+            self.main_agent = Agent("S", None, None)
+
+
+class Agent:
+    def __init__(self, id, start, goal):
+        self.id = id
+        self.position = start
+        self.start = start
+        self.goal = goal
+        self.path = []
+        self.completed = False
+
+    def update_goal(self, goal):
+        self.goal = goal
 
 
 class Render:
@@ -107,8 +155,9 @@ class Render:
         self.grid = None
         self.cell_size = 0
         self.running = True
-        self.current_path = []
-        self.path_index = 0
+        self.agent_paths = {agent.id: [] for agent in game_parameter.agents}
+        self.path_indices = {agent.id: 0 for agent in game_parameter.agents}
+        self.path_progress = {agent.id: 0 for agent in game_parameter.agents}
 
     def initialize(self):
         """
@@ -129,8 +178,11 @@ class Render:
             for j in range(self.game_parameter.cols):
                 cell = self.game_parameter.map[i][j]
                 color = BACKGROUND_COLOR
-                if cell.startswith("S"):
+                if cell == "S":
                     color = START_COLOR
+                elif cell.startswith("S"):
+                    # print("agent id: ", )
+                    color = self.game_parameter.agent_color[cell]
                 elif cell.startswith("G"):
                     color = GOAL_COLOR
                 elif cell.startswith("F"):
@@ -139,41 +191,22 @@ class Render:
                     color = TIME_COLOR
                 elif cell == "-1":
                     color = OBSTACLE_COLOR
-                elif cell == "P":
-                    color = PATH_COLOR
 
-                # Draw the cell background
                 pygame.draw.rect(
                     self.grid,
                     color,
                     (
-                        (
-                            j * self.cell_size
-                            if not cell.startswith("P")
-                            else j * self.cell_size + (self.cell_size // 4)
-                        ),
-                        (
-                            i * self.cell_size
-                            if not cell.startswith("P")
-                            else i * self.cell_size + (self.cell_size // 4)
-                        ),
-                        (
-                            self.cell_size
-                            if not cell.startswith("P")
-                            else self.cell_size // 2
-                        ),
-                        (
-                            self.cell_size
-                            if not cell.startswith("P")
-                            else self.cell_size // 2
-                        ),
+                        j * self.cell_size,
+                        i * self.cell_size,
+                        self.cell_size,
+                        self.cell_size,
                     ),
                 )
 
                 # Draw the cell content
-                cell_font = pygame.font.Font(None, int(self.cell_size * 0.5))
-                text_surface = cell_font.render(cell, True, GRID_LINE_COLOR)
-                if cell != "0" and cell != "-1" and cell != "P":
+                if cell != "0" and cell != "-1":
+                    cell_font = pygame.font.Font(None, int(self.cell_size * 0.5))
+                    text_surface = cell_font.render(cell, True, GRID_LINE_COLOR)
                     text_rect = text_surface.get_rect(
                         center=(
                             j * self.cell_size + self.cell_size // 2,
@@ -182,6 +215,7 @@ class Render:
                     )
                     self.grid.blit(text_surface, text_rect)
 
+        # Draw grid lines
         for i in range(self.game_parameter.rows + 1):
             pygame.draw.line(
                 self.grid,
@@ -196,6 +230,25 @@ class Render:
                 (j * self.cell_size, 0),
                 (j * self.cell_size, SCREEN_SIZE),
             )
+
+        # Draw path as line
+        for agent_id, path in self.agent_paths.items():
+            if path:
+                color = self.game_parameter.agent_color[agent_id]
+                progress = self.path_progress[agent_id]
+                current_index = self.path_indices[agent_id]
+                for i in range(min(current_index + 1, progress)):
+                    start = path[i]
+                    end = path[i + 1]
+                    start_pixel = (
+                        start[1] * self.cell_size + self.cell_size // 2,
+                        start[0] * self.cell_size + self.cell_size // 2,
+                    )
+                    end_pixel = (
+                        end[1] * self.cell_size + self.cell_size // 2,
+                        end[0] * self.cell_size + self.cell_size // 2,
+                    )
+                    pygame.draw.line(self.grid, color, start_pixel, end_pixel, 3)
 
     def draw_text(self, text, font, color, x, y):
         """
@@ -270,33 +323,42 @@ class Render:
                 400,
             )
 
-    def set_path(self, path):
-        self.current_path = path
-        self.path_index = 0
+    def update_path_progress(self):
+        for agent_id in self.path_progress:
+            if self.path_progress[agent_id] < len(self.agent_paths[agent_id]) - 1:
+                self.path_progress[agent_id] += 1
 
-    def draw_next_step(self):
-        if self.path_index < len(self.current_path):
-            step = self.current_path[self.path_index]
-            row, col = step
-            if self.game_parameter.map[row][col] not in ["S", "G"]:
-                self.game_parameter.map[row][col] = "P"
-            self.path_index += 1
-            return True
-        return False
+    def reset_path_progress(self):
+        for agent_id in self.path_progress:
+            self.path_progress[agent_id] = 0
+            self.path_indices[agent_id] = 0
+
+    def set_path(self, agent_id, path):
+        self.agent_paths[agent_id] = path
+        self.path_indices[agent_id] = 0
+        self.path_progress[agent_id] = 0
+    
+    def update_agent_position(self, agent_id):
+        if self.path_indices[agent_id] < len(self.agent_paths[agent_id]) - 1:
+            self.path_indices[agent_id] += 1
+
+    def draw_next_step_multi(self):
+        any_step_drawn = False
+        for agent in self.game_parameter.agents:
+            agent_id = agent.id
+            if self.path_indices[agent_id] < len(self.agent_paths[agent_id]):
+                step = self.agent_paths[agent_id][self.path_indices[agent_id]]
+                if isinstance(step, tuple) and len(step) == 2:
+                    any_step_drawn = True
+        return any_step_drawn
 
     def clear_path(self):
-        """
-        Clear the drawn path from the game window.
-        """
         self.game_parameter.map = [row[:] for row in self.backup_map]
-
-        # Redraw the grid to clear the path
+        self.agent_paths = {agent.id: [] for agent in self.game_parameter.agents}
+        self.path_indices = {agent.id: 0 for agent in self.game_parameter.agents}
         self.draw_grid()
 
     def draw(self):
-        """
-        Draw the game window.
-        """
         self.screen.fill(BACKGROUND_COLOR)
         self.draw_grid()
         self.screen.blit(self.grid, (0, 0))

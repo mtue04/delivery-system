@@ -1,6 +1,7 @@
 import pkg_resources
 import subprocess
 import sys
+import random
 
 # Define screen parameters
 SCREEN_SIZE = 600
@@ -52,3 +53,11 @@ def check_and_install_packages():
         print("Installing missing packages...")
         for package in missing_packages:
             subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+
+def generate_color():
+    return (
+        random.randint(150, 255),
+        random.randint(150, 255),
+        random.randint(150, 255),
+    )

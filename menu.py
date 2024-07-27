@@ -122,11 +122,7 @@ def settings_menu(screen, clock, medium_font, game_parameter):
                     algorithms = (
                         ["BFS", "DFS", "UCS", "GBFS", "A*"]
                         if game_parameter.level == 1
-                        else (
-                            ["UCS", "A*"]
-                            if game_parameter.level == 2
-                            else ["A*"]
-                        )
+                        else (["UCS", "A*"] if game_parameter.level == 2 else ["A*"])
                     )
                     current_index = algorithms.index(game_parameter.algorithm)
                     game_parameter.algorithm = algorithms[
@@ -143,7 +139,7 @@ def settings_menu(screen, clock, medium_font, game_parameter):
         ):
             game_parameter.algorithm = "UCS"
             pygame.display.set_caption(
-                "Warning: Level 2 cannot handle by BFS, DFS or GBFS algorithm. Auto changing to the suitable algorithm."
+                "Warning: Level 2 cannot handle by BFS, DFS, UCS or GBFS algorithm. Auto changing to the suitable algorithm."
             )
         elif game_parameter.level == 3 and (
             game_parameter.algorithm == "BFS"
