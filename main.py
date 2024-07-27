@@ -46,7 +46,7 @@ def main():
 
 def run_game(screen, clock, controller, render, game_parameter):
     running = True
-    step_delay = 1000
+    step_delay = 500
     last_step_time = 0
     path_found = False
     path_exist = False
@@ -66,8 +66,6 @@ def run_game(screen, clock, controller, render, game_parameter):
                             for agent in game_parameter.agents:
                                 if agent.id != game_parameter.main_agent.id:
                                     render.set_path(agent.id, agent.path)
-                                print(agent.id)
-                                print("Path:", agent.path)
                             path_found = True
                             path_exist = True
                             last_step_time = current_time
@@ -105,6 +103,9 @@ def run_game(screen, clock, controller, render, game_parameter):
                     last_step_time = current_time
                 if completed:
                     path_found = False
+                    for agent in game_parameter.agents:
+                        print(agent.id)
+                        print("Path: ", agent.path_all)
                     print("Main agent reached its goal!")
             else:
                 if render.draw_next_step():

@@ -140,11 +140,17 @@ class Agent:
         self.start = start
         self.goal = goal
         self.path = []
+        self.path_all = []
         self.completed = False
+        self.time_remaining = 0
+        self.fuel_remaining = 0
 
     def update_goal(self, goal):
         self.goal = goal
 
+    def update_time_fuel(self, time, fuel):
+        self.time_remaining = time
+        self.fuel_remaining = fuel
 
 class Render:
     def __init__(self, game_parameter):
@@ -232,7 +238,8 @@ class Render:
             )
 
         # Draw path as line
-        for agent_id, path in self.agent_paths.items():
+        for agent_id, path in reversed(self.agent_paths.items()):
+            id_value = (int(agent_id[1:]) * 3) if agent_id != "S" else 0
             if path:
                 color = self.game_parameter.agent_color[agent_id]
                 progress = self.path_progress[agent_id]
@@ -241,12 +248,12 @@ class Render:
                     start = path[i]
                     end = path[i + 1]
                     start_pixel = (
-                        start[1] * self.cell_size + self.cell_size // 2,
-                        start[0] * self.cell_size + self.cell_size // 2,
+                        id_value + (start[1] * self.cell_size + self.cell_size // 2),
+                        id_value + (start[0] * self.cell_size + self.cell_size // 2),
                     )
                     end_pixel = (
-                        end[1] * self.cell_size + self.cell_size // 2,
-                        end[0] * self.cell_size + self.cell_size // 2,
+                        id_value + (end[1] * self.cell_size + self.cell_size // 2),
+                        id_value + (end[0] * self.cell_size + self.cell_size // 2),
                     )
                     pygame.draw.line(self.grid, color, start_pixel, end_pixel, 3)
 
@@ -337,7 +344,7 @@ class Render:
         self.agent_paths[agent_id] = path
         self.path_indices[agent_id] = 0
         self.path_progress[agent_id] = 0
-    
+
     def update_agent_position(self, agent_id):
         if self.path_indices[agent_id] < len(self.agent_paths[agent_id]) - 1:
             self.path_indices[agent_id] += 1

@@ -288,25 +288,23 @@ class Controller:
             return [], time_limit, fuel_limit
 
     # For level 4 only
-    def find_positions_multi(self):
-        goals = {}
-        for i in range(self.rows):
-            for j in range(self.cols):
-                if self.map[i][j].startswith("G"):
-                    goals[self.map[i][j]] = (i, j)
-        return goals
-
-    def a_star_multi(self, agent, time_windows):
+    def a_star_multi(self, agent, time_windows, time_step_start):
         start = agent.position
         goal = agent.goal
         initial_time = self.render.game_parameter.time_limit
         initial_fuel = self.render.game_parameter.fuel_limit
 
-        pq = [(0, 0, start, initial_time, initial_fuel, 0)]  # Added time step
+        pq = [
+            (0, 0, start, initial_time, initial_fuel, time_step_start)
+        ]  # Added time step
         visited = set()
         came_from = {}
-        g_score = {(start, initial_time, initial_fuel, 0): 0}
-        f_score = {(start, initial_time, initial_fuel, 0): self.heuristic(start, goal)}
+        g_score = {(start, initial_time, initial_fuel, time_step_start): 0}
+        f_score = {
+            (start, initial_time, initial_fuel, time_step_start): self.heuristic(
+                start, goal
+            )
+        }
 
         max_iterations = 1000  # Prevent infinite loops
         iterations = 0
@@ -379,18 +377,22 @@ class Controller:
         return None  # No path found
 
     def find_alternative_path(
-        self, agent, time_windows, conflicting_paths, main_agent_path
+        self, agent, time_windows, conflicting_paths, main_agent_path, time_step_start
     ):
         start = agent.position
         goal = agent.goal
         initial_time = self.render.game_parameter.time_limit
         initial_fuel = self.render.game_parameter.fuel_limit
 
-        pq = [(0, 0, start, initial_time, initial_fuel, 0, [])]
+        pq = [(0, 0, start, initial_time, initial_fuel, time_step_start, [])]
         visited = set()
         came_from = {}
-        g_score = {(start, initial_time, initial_fuel, 0): 0}
-        f_score = {(start, initial_time, initial_fuel, 0): self.heuristic(start, goal)}
+        g_score = {(start, initial_time, initial_fuel, time_step_start): 0}
+        f_score = {
+            (start, initial_time, initial_fuel, time_step_start): self.heuristic(
+                start, goal
+            )
+        }
 
         max_iterations = 10000
         iterations = 0
@@ -487,15 +489,6 @@ class Controller:
         # If no path is found, return a path that stays at the current position
         return [agent.position] * len(main_agent_path), initial_time, initial_fuel
 
-    def check_path_conflict(self, path1, path2):
-        # Check if two paths have any conflicting positions at the same time step
-        for t in range(min(len(path1), len(path2))):
-            if path1[t] == path2[t]:
-                return True, t
-            elif path1[t] == path2[t - 1] or path1[t - 1] == path2[t]:
-                return True, t
-        return False, -1
-
     def is_valid_move(self, pos, time_windows, agent_id, time_step):
         if not (0 <= pos[0] < self.rows and 0 <= pos[1] < self.cols):
             return False
@@ -512,16 +505,6 @@ class Controller:
 
         return True
 
-    def find_current_position(self, time_windows, agent_id, time_step):
-        return next(
-            (
-                pos
-                for pos, times in time_windows.items()
-                if times.get(time_step) == agent_id
-            ),
-            None,
-        )
-
     def calculate_costs(self, cell_value):
         time_cost = 1
         fuel_cost = 1
@@ -532,8 +515,7 @@ class Controller:
         return time_cost, fuel_cost
 
     def plan_paths_multi(self):
-        goals = self.find_positions_multi()
-        time_windows = defaultdict(lambda: defaultdict(lambda: None))
+        time_windows = self.get_current_time_windows()
         paths = {}
         max_path_length = 0
 
@@ -543,7 +525,15 @@ class Controller:
 
         # First, find path for the main agent
         main_agent = next(agent for agent in self.agents if agent.id == "S")
-        result = self.a_star_multi(main_agent, time_windows)
+        time_step_start = next(
+            (
+                t
+                for t, pos in enumerate(self.main_agent.path)
+                if pos == self.main_agent.position
+            ),
+            0,  # Default to 0 if position not found
+        )
+        result = self.a_star_multi(main_agent, time_windows, time_step_start)
         if result:
             path, time_left, fuel_left = result
             main_agent.path = path
@@ -562,9 +552,10 @@ class Controller:
         # Then, find initial paths for other agents
         other_agents = [agent for agent in self.agents if agent.id != "S"]
         for agent in other_agents:
-            result = self.a_star_multi(agent, time_windows)
+            result = self.a_star_multi(agent, time_windows, time_step_start)
             if result:
                 path, time_left, fuel_left = result
+                full_path = agent.path_all + path
                 agent.path = path
                 agent.time_left = time_left
                 agent.fuel_left = fuel_left
@@ -572,63 +563,19 @@ class Controller:
                 max_path_length = max(max_path_length, len(path))
 
                 # Update time windows for this agent
-                for t, pos in enumerate(path):
+                for t, pos in enumerate(full_path):
                     time_windows[pos][t] = agent.id
             else:
                 print(f"No initial path found for agent {agent.id}")
 
         # Resolve conflicts
-        conflict_resolution_attempts = 0
-        max_resolution_attempts = (
-            100  # Limit the number of conflict resolution attempts
-        )
-
-        while conflict_resolution_attempts < max_resolution_attempts:
-            conflicts = self.detect_conflicts(paths, max_path_length)
-            if not conflicts:
-                break
-
-            conflict_resolution_attempts += 1
-            print(f"Resolving conflicts, attempt {conflict_resolution_attempts}")
-
-            for agent_id, conflicting_agents in conflicts.items():
-                if agent_id == main_agent.id:
-                    continue  # Skip resolving conflicts for the main agent
-
-                agent = next(a for a in other_agents if a.id == agent_id)
-                conflicting_paths = [
-                    paths[conflicting_agent] for conflicting_agent in conflicting_agents
-                ]
-
-                result = self.find_alternative_path(
-                    agent, time_windows, conflicting_paths, paths[main_agent.id]
-                )
-                if result:
-                    new_path, new_time_left, new_fuel_left = result
-                    agent.path = new_path
-                    agent.time_left = new_time_left
-                    agent.fuel_left = new_fuel_left
-                    paths[agent.id] = new_path
-                    max_path_length = max(max_path_length, len(new_path))
-
-                    # Update time windows for this agent
-                    for t, pos in enumerate(new_path):
-                        time_windows[pos][t] = agent.id
-                else:
-                    print(f"Failed to find alternative path for agent {agent.id}")
-                    # Allow the agent to stay at its current position indefinitely
-                    agent.path = [agent.position] * max_path_length
-                    paths[agent.id] = agent.path
-
-        if conflict_resolution_attempts == max_resolution_attempts:
-            print(
-                "Warning: Maximum conflict resolution attempts reached. Some conflicts may remain."
-            )
+        self.resolve_conflicts(paths, time_windows, main_agent, other_agents)
 
         # Assign final paths to agents
         for agent in self.agents:
             if agent.id in paths:
                 agent.path = paths[agent.id]
+                agent.path_all += paths[agent.id]  # Store the full path
             else:
                 print(f"No path found for agent {agent.id}")
 
@@ -646,18 +593,101 @@ class Controller:
                         conflicts[positions[pos]].add(agent_id)
                     positions[pos] = agent_id
 
-                # Check for swap conflicts
-                if t > 0 and t < len(path):
-                    prev_pos = path[t - 1]
-                    for other_id, other_path in paths.items():
-                        if other_id != agent_id and t < len(other_path):
-                            if prev_pos == other_path[t] and pos == other_path[t - 1]:
-                                conflicts[agent_id].add(other_id)
-                                conflicts[other_id].add(agent_id)
+                    # Check for swap conflicts and agents passing through each other
+                    if t > 0 and t < len(path):
+                        prev_pos = path[t - 1]
+                        for other_id, other_path in paths.items():
+                            if other_id != agent_id and t < len(other_path):
+                                # Check for swap conflicts
+                                if (
+                                    prev_pos == other_path[t]
+                                    and pos == other_path[t - 1]
+                                ):
+                                    conflicts[agent_id].add(other_id)
+                                    conflicts[other_id].add(agent_id)
+
+                                # Check for agents passing through each other
+                                if t + 1 < len(path) and t + 1 < len(other_path):
+                                    if (
+                                        pos == other_path[t + 1]
+                                        and path[t + 1] == other_path[t]
+                                    ):
+                                        conflicts[agent_id].add(other_id)
+                                        conflicts[other_id].add(agent_id)
 
         return conflicts
 
-    def generate_random_goal(self, agent):
+    def resolve_conflicts(self, paths, time_windows, main_agent, other_agents):
+        conflict_resolution_attempts = 0
+        max_resolution_attempts = 100
+        agent_cannot_move = []
+
+        while conflict_resolution_attempts < max_resolution_attempts:
+            conflicts = self.detect_conflicts(
+                paths, max(len(path) for path in paths.values())
+            )
+            if not conflicts:
+                break
+
+            conflict_resolution_attempts += 1
+
+            for agent_id, conflicting_agents in conflicts.items():
+                if agent_id == main_agent.id:
+                    continue  # Skip resolving conflicts for the main agent
+
+                agent = next(a for a in other_agents if a.id == agent_id)
+                conflicting_paths = [
+                    paths[conflicting_agent] for conflicting_agent in conflicting_agents
+                ]
+
+                time_step_start = next(
+                    (
+                        t
+                        for t, pos in enumerate(paths[main_agent.id])
+                        if pos == main_agent.position
+                    ),
+                    0,  # Default to 0 if position not found
+                )
+                result = self.find_alternative_path(
+                    agent,
+                    time_windows,
+                    conflicting_paths,
+                    paths[main_agent.id],
+                    time_step_start,
+                )
+                if result:
+                    new_path, new_time_left, new_fuel_left = result
+                    full_path = agent.path_all + new_path
+                    is_conflict, t = self.check_path_conflict(
+                        full_path, paths[main_agent.id]
+                    )
+                if not is_conflict:
+                    agent.path = new_path
+                    paths[agent.id] = full_path
+
+                    # Update time windows for this agent
+                    for t, pos in enumerate(full_path):
+                        time_windows[pos][t] = agent.id
+                else:
+                    agent_cannot_move.append(agent)
+
+        if conflict_resolution_attempts == max_resolution_attempts:
+            print(
+                "Warning: Maximum conflict resolution attempts reached. Some conflicts may remain."
+            )
+            agent.path = [agent.position] * len(paths[main_agent.id])
+            paths[agent.id] = agent.path
+
+    def check_path_conflict(self, path1, path2):
+        # Check if two paths have any conflicting positions at the same time step
+        for t in range(min(len(path1), len(path2))):
+            if path1[t] == path2[t]:
+                return True, t
+            elif path1[t] == path2[t - 1] and path1[t - 1] == path2[t]:
+                return True, t
+        return False, -1
+
+    def generate_random_goal(self, agent, paths):
         occupied_positions = set((a.position for a in self.agents if a != agent))
         occupied_positions.update(a.goal for a in self.agents if a != agent and a.goal)
         while True:
@@ -668,19 +698,26 @@ class Controller:
                 and not self.map[i][j].startswith("S")
                 and not self.map[i][j].startswith("G")
             ):
-                return (i, j)
+                for path in paths:
+                    if (i, j) in path:
+                        continue
+                # return (i, j)
+                if agent.id == "S1":
+                    return (9, 0)
+                elif agent.id == "S2":
+                    return (5, 3)
 
     def update_agent_goal(self, agent):
         if agent.id == "S":
             return
 
         if not agent.goal:
-            new_goal = self.generate_random_goal(agent)
+            new_goal = self.generate_random_goal(agent, agent.path)
             agent.goal = new_goal
             new_goal_i, new_goal_j = new_goal
             self.map[new_goal_i][new_goal_j] = "G" + agent.id[1:]
             agent.completed = False
-        
+
         if agent.position == agent.goal:
             # Remove old start and goal positions
             old_start_i, old_start_j = agent.start
@@ -690,7 +727,7 @@ class Controller:
 
             # Assign new start and goal positions
             new_start = agent.position
-            new_goal = self.generate_random_goal(agent)
+            new_goal = self.generate_random_goal(agent, agent.path)
             agent.start = new_start
             agent.goal = new_goal
             new_start_i, new_start_j = new_start
@@ -702,11 +739,24 @@ class Controller:
     def move_multi_agents(self):
         new_positions = {}
         waiting_agents = []
+        main_agent = next(agent for agent in self.agents if agent.id == "S")
+        time_step_start = next(
+            (
+                t
+                for t, pos in enumerate(self.main_agent.path)
+                if pos == self.main_agent.position
+            ),
+            0,  # Default to 0 if position not found
+        )
 
         # First pass: attempt to move all agents
         for agent in self.agents:
             if agent.path:
-                new_pos = agent.path[self.render.path_indices[agent.id] + 1] if self.render.path_indices[agent.id] + 1 < len(agent.path) else agent.path[-1]
+                new_pos = (
+                    agent.path[self.render.path_indices[agent.id] + 1]
+                    if self.render.path_indices[agent.id] + 1 < len(agent.path)
+                    else agent.path[-1]
+                )
                 if new_pos not in new_positions:
                     new_positions[new_pos] = agent
                 else:
@@ -714,10 +764,12 @@ class Controller:
             else:
                 # If agent has no path, update its goal and recalculate path
                 self.update_agent_goal(agent)
-                result = self.a_star_multi(agent, {})  # Empty time windows for simplicity
+                result = self.a_star_multi(
+                    agent, self.get_current_time_windows(), time_step_start
+                )
                 if result:
                     new_path, time_left, fuel_left = result
-                    agent.path = agent.path + new_path  # Combine old and new paths
+                    agent.path = new_path
                     agent.time_left = time_left
                     agent.fuel_left = fuel_left
                     if new_path:
@@ -732,10 +784,16 @@ class Controller:
         # Second pass: resolve collisions
         for agent in waiting_agents:
             current_pos = agent.position
-            new_pos = agent.path[self.render.path_indices[agent.id] + 1] if self.render.path_indices[agent.id] + 1 < len(agent.path) else agent.path[-1]
+            new_pos = (
+                agent.path[self.render.path_indices[agent.id] + 1]
+                if self.render.path_indices[agent.id] + 1 < len(agent.path)
+                else agent.path[-1]
+            )
 
             if new_pos in new_positions:
-                if agent.id == "S" or (agent.id != "S" and new_positions[new_pos].id != "S"):
+                if agent.id == "S" or (
+                    agent.id != "S" and new_positions[new_pos].id != "S"
+                ):
                     # Current agent has higher priority
                     displaced_agent = new_positions[new_pos]
                     displaced_agent.position = current_pos  # Move back
@@ -751,11 +809,45 @@ class Controller:
         for pos, agent in new_positions.items():
             agent.position = pos
             self.render.update_agent_position(agent.id)
-            if agent.position == agent.goal:
-                agent.completed = True
+            agent.completed = True if agent.position == agent.goal else False
+            if agent.position == agent.goal and agent.id != "S":
                 self.update_agent_goal(agent)  # Generate new goal immediately
+                new_result = self.a_star_multi(
+                    agent, self.get_current_time_windows(), time_step_start
+                )
+                if new_result:
+                    new_path, new_time_left, new_fuel_left = new_result
+                    full_path = agent.path_all + new_path
+                    is_conflict, t = self.check_path_conflict(
+                        full_path, main_agent.path
+                    )
+                    if not is_conflict:
+                        agent.path = (
+                            agent.path[self.render.path_indices[agent.id] :] + new_path
+                        )
+                        agent.path_all += new_path
+                        agent.time_left = new_time_left
+                        agent.fuel_left = new_fuel_left
+                        self.render.set_path(agent.id, agent.path)
+                    else:
+                        agent.path = [agent.position] * max(
+                            self.render.game_parameter.time_limit - len(agent.path),
+                            len(agent.path),
+                        )
+                        agent.path_all += agent.path
+                        self.render.set_path(agent.id, agent.path)
 
         return self.main_agent.position, self.main_agent.completed
+
+    def get_current_time_windows(self):
+        time_windows = defaultdict(lambda: defaultdict(lambda: None))
+        for agent in self.agents:
+            full_path = agent.path_all
+
+            for t, pos in enumerate(full_path):
+                time_windows[pos][t] = agent.id
+
+        return time_windows
 
     def reconstruct_path_multi(self, came_from, end_state):
         path = []
