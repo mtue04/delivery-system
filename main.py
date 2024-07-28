@@ -4,7 +4,7 @@ from menu import *
 
 def main():
     # Check and install required packages
-    # check_and_install_packages()
+    check_and_install_packages()
 
     # Initialize program
     pygame.init()
