@@ -103,11 +103,9 @@ def run_game(screen, clock, controller, render, game_parameter):
                     last_step_time = current_time
                 if completed:
                     path_found = False
-                    for agent in game_parameter.agents:
+                    for agent in sorted(game_parameter.agents, key=lambda x: x.id):
                         print(agent.id)
                         print("Path: ", agent.path_all)
-                        # print("Time: ", agent.time_remaining)
-                        # print("Fuel: ", agent.fuel_remaining)
                     print("Main agent reached its goal!")
             else:
                 if render.draw_next_step():

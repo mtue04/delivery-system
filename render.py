@@ -142,16 +142,11 @@ class Agent:
         self.path = []
         self.path_all = []
         self.completed = False
-        self.time_remaining = 0
-        self.fuel_remaining = 0
 
     def update_goal(self, goal):
         self.goal = goal
 
-    def update_time_fuel(self, time, fuel):
-        self.time_remaining = time
-        self.fuel_remaining = fuel
-        
+
 class Render:
     def __init__(self, game_parameter):
         self.game_parameter = game_parameter
@@ -240,6 +235,8 @@ class Render:
         # Draw path as line
         for agent_id, path in reversed(self.agent_paths.items()):
             id_value = (int(agent_id[1:]) * 3) if agent_id != "S" else 0
+            if id_value > 15:
+                id_value = ((int(agent_id[1:])-5) * (-3))
             if path:
                 color = self.game_parameter.agent_color.get(agent_id, START_COLOR)
                 progress = self.path_progress[agent_id]
