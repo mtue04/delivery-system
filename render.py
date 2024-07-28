@@ -152,6 +152,7 @@ class Agent:
         self.time_remaining = time
         self.fuel_remaining = fuel
 
+
 class Render:
     def __init__(self, game_parameter):
         self.game_parameter = game_parameter
@@ -188,7 +189,7 @@ class Render:
                     color = START_COLOR
                 elif cell.startswith("S"):
                     # print("agent id: ", )
-                    color = self.game_parameter.agent_color[cell]
+                    color = self.game_parameter.agent_color.get(cell, START_COLOR)
                 elif cell.startswith("G"):
                     color = GOAL_COLOR
                 elif cell.startswith("F"):
@@ -241,7 +242,7 @@ class Render:
         for agent_id, path in reversed(self.agent_paths.items()):
             id_value = (int(agent_id[1:]) * 3) if agent_id != "S" else 0
             if path:
-                color = self.game_parameter.agent_color[agent_id]
+                color = self.game_parameter.agent_color.get(agent_id, START_COLOR)
                 progress = self.path_progress[agent_id]
                 current_index = self.path_indices[agent_id]
                 for i in range(min(current_index + 1, progress)):
@@ -359,6 +360,12 @@ class Render:
                     any_step_drawn = True
         return any_step_drawn
 
+    def draw_next_step(self):
+        if self.path_indices["S"] < len(self.agent_paths["S"]):
+            self.path_indices["S"] += 1
+            return True
+        return False
+    
     def clear_path(self):
         self.game_parameter.map = [row[:] for row in self.backup_map]
         self.agent_paths = {agent.id: [] for agent in self.game_parameter.agents}
