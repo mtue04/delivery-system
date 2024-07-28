@@ -151,8 +151,7 @@ class Agent:
     def update_time_fuel(self, time, fuel):
         self.time_remaining = time
         self.fuel_remaining = fuel
-
-
+        
 class Render:
     def __init__(self, game_parameter):
         self.game_parameter = game_parameter
@@ -336,10 +335,10 @@ class Render:
             if self.path_progress[agent_id] < len(self.agent_paths[agent_id]) - 1:
                 self.path_progress[agent_id] += 1
 
-    def reset_path_progress(self):
-        for agent_id in self.path_progress:
-            self.path_progress[agent_id] = 0
-            self.path_indices[agent_id] = 0
+    # def reset_path_progress(self):
+    #     for agent_id in self.path_progress:
+    #         self.path_progress[agent_id] = 0
+    #         self.path_indices[agent_id] = 0
 
     def set_path(self, agent_id, path):
         self.agent_paths[agent_id] = path
@@ -365,12 +364,11 @@ class Render:
             self.path_indices["S"] += 1
             return True
         return False
-    
-    def clear_path(self):
-        self.game_parameter.map = [row[:] for row in self.backup_map]
-        self.agent_paths = {agent.id: [] for agent in self.game_parameter.agents}
-        self.path_indices = {agent.id: 0 for agent in self.game_parameter.agents}
-        self.draw_grid()
+
+    def clear_agent_path(self, agent_id):
+        self.agent_paths[agent_id] = []
+        self.path_indices[agent_id] = 0
+        self.path_progress[agent_id] = 0
 
     def draw(self):
         self.screen.fill(BACKGROUND_COLOR)

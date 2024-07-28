@@ -206,13 +206,7 @@ class Controller:
                 ):
 
                     cell_value = self.map[next_pos[0]][next_pos[1]]
-                    time_cost = 1  # Default time cost for normal cells
-                    fuel_cost = 1  # Default fuel cost for movement
-
-                    if cell_value.isdigit():
-                        time_cost += int(
-                            cell_value
-                        )  # Add additional time cost for numbered cells
+                    time_cost, fuel_cost = self.calculate_costs(cell_value)
 
                     new_time = current_time - time_cost
                     new_fuel = current_fuel - fuel_cost
@@ -288,11 +282,21 @@ class Controller:
             return [], time_limit, fuel_limit
 
     # For level 4 only
-    def a_star_multi(self, agent, time_windows, time_step_start):
+    def a_star_multi(
+        self, agent, time_windows, time_step_start, initial_time=None, initial_fuel=None
+    ):
         start = agent.position
         goal = agent.goal
-        initial_time = self.render.game_parameter.time_limit
-        initial_fuel = self.render.game_parameter.fuel_limit
+        initial_time = (
+            initial_time
+            if initial_time is not None
+            else self.render.game_parameter.time_limit
+        )
+        initial_fuel = (
+            initial_fuel
+            if initial_fuel is not None
+            else self.render.game_parameter.fuel_limit
+        )
 
         pq = [
             (0, 0, start, initial_time, initial_fuel, time_step_start)
@@ -537,8 +541,7 @@ class Controller:
         if result:
             path, time_left, fuel_left = result
             main_agent.path = path
-            main_agent.time_left = time_left
-            main_agent.fuel_left = fuel_left
+            main_agent.update_time_fuel(time_left, fuel_left)
             paths[main_agent.id] = path
             max_path_length = len(path)
 
@@ -557,8 +560,7 @@ class Controller:
                 path, time_left, fuel_left = result
                 full_path = agent.path_all + path
                 agent.path = path
-                agent.time_left = time_left
-                agent.fuel_left = fuel_left
+                agent.update_time_fuel(time_left, fuel_left)
                 paths[agent.id] = path
                 max_path_length = max(max_path_length, len(path))
 
@@ -664,6 +666,7 @@ class Controller:
                 if not is_conflict:
                     agent.path = new_path
                     paths[agent.id] = full_path
+                    agent.update_time_fuel(new_time_left, new_fuel_left)
 
                     # Update time windows for this agent
                     for t, pos in enumerate(full_path):
@@ -701,11 +704,11 @@ class Controller:
                 for path in paths:
                     if (i, j) in path:
                         continue
-                # return (i, j)
-                if agent.id == "S1":
-                    return (9, 0)
-                elif agent.id == "S2":
-                    return (5, 3)
+                return (i, j)
+                # if agent.id == "S1":
+                #     return (9, 0)
+                # elif agent.id == "S2":
+                #     return (5, 3)
 
     def update_agent_goal(self, agent):
         if agent.id == "S":
@@ -735,6 +738,10 @@ class Controller:
             self.map[new_start_i][new_start_j] = "S" + agent.id[1:]
             self.map[new_goal_i][new_goal_j] = "G" + agent.id[1:]
             agent.completed = False
+
+            # Clear the old path
+            agent.path = []
+            self.render.clear_agent_path(agent.id) # Clear the path from the render
 
     def move_multi_agents(self):
         new_positions = {}
@@ -770,8 +777,7 @@ class Controller:
                 if result:
                     new_path, time_left, fuel_left = result
                     agent.path = new_path
-                    agent.time_left = time_left
-                    agent.fuel_left = fuel_left
+                    agent.update_time_fuel(time_left, fuel_left)
                     if new_path:
                         new_pos = new_path[0]
                         if new_pos not in new_positions:
@@ -813,7 +819,11 @@ class Controller:
             if agent.position == agent.goal and agent.id != "S":
                 self.update_agent_goal(agent)  # Generate new goal immediately
                 new_result = self.a_star_multi(
-                    agent, self.get_current_time_windows(), time_step_start
+                    agent,
+                    self.get_current_time_windows(),
+                    time_step_start,
+                    initial_time=agent.time_remaining,  # Use remaining time
+                    initial_fuel=agent.fuel_remaining,  # Use remaining fuel
                 )
                 if new_result:
                     new_path, new_time_left, new_fuel_left = new_result
@@ -826,12 +836,11 @@ class Controller:
                             agent.path[self.render.path_indices[agent.id] :] + new_path
                         )
                         agent.path_all += new_path
-                        agent.time_left = new_time_left
-                        agent.fuel_left = new_fuel_left
+                        agent.update_time_fuel(new_time_left, new_fuel_left)
                         self.render.set_path(agent.id, agent.path)
                     else:
                         agent.path = [agent.position] * max(
-                            self.render.game_parameter.time_limit - len(agent.path),
+                            len(main_agent.path) - len(agent.path),
                             len(agent.path),
                         )
                         agent.path_all += agent.path

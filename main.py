@@ -106,6 +106,8 @@ def run_game(screen, clock, controller, render, game_parameter):
                     for agent in game_parameter.agents:
                         print(agent.id)
                         print("Path: ", agent.path_all)
+                        # print("Time: ", agent.time_remaining)
+                        # print("Fuel: ", agent.fuel_remaining)
                     print("Main agent reached its goal!")
             else:
                 if render.draw_next_step():
